@@ -16,23 +16,22 @@ const firebaseConfig = {
   appId: "1:867138523308:web:aaeaee8efb940e7ba28f09"
 };
 
-// --- INIZIALIZZAZIONE ---
-let app;
+// --- INIZIALIZZAZIONE SICURA ---
+let firebaseApp;
 try {
-  app = initializeApp(firebaseConfig);
+  firebaseApp = initializeApp(firebaseConfig);
 } catch (e) {
-  // Ignora se già inizializzata
+  // Ignora se già inizializzata per evitare crash
 }
 
-const auth = getAuth(app);
-const db = getFirestore(app);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
 const appId = "gestionale-cassa-v2"; 
 
-const DailyCashSheet = () => {
+const App = () => {
   // --- STATE ---
   const [user, setUser] = useState(null);
   
-  // Lettura sicura dal LocalStorage
   const [shopId, setShopId] = useState(() => {
     try { return localStorage.getItem('shopId') || ''; } catch (e) { return ''; }
   });
@@ -41,7 +40,7 @@ const DailyCashSheet = () => {
     try { return !!localStorage.getItem('shopId'); } catch (e) { return false; }
   });
 
-  const [appVersion] = useState("v2.5"); 
+  const [appVersion] = useState("v2.7 (Fix Export)"); 
   
   const [currentView, setCurrentView] = useState('menu'); 
   const [currentDate, setCurrentDate] = useState(new Date().toISOString().slice(0,10));
@@ -81,49 +80,51 @@ const DailyCashSheet = () => {
   
   const [debtors, setDebtors] = useState([]);
 
-  // Modali
+  // Modali State
   const [showProductModal, setShowProductModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [monthlyStats, setMonthlyStats] = useState(null);
   const [loadingReport, setLoadingReport] = useState(false);
+  
   const [showAddDebtorModal, setShowAddDebtorModal] = useState(false);
   const [newDebtorName, setNewDebtorName] = useState("");
   const [newDebtorAmount, setNewDebtorAmount] = useState("");
+  
   const [showTransactionModal, setShowTransactionModal] = useState(false);
   const [transactionData, setTransactionData] = useState({ id: null, type: 'add', amount: "" });
 
-  // --- SYNC DATI ---
-  // 1. Catalogo Globale
+  // --- SYNC ---
+  // Catalogo
   useEffect(() => {
     if (!user || !shopId) return;
-    const catalogRef = doc(db, 'artifacts', appId, 'public', 'data', 'catalogs', shopId);
-    return onSnapshot(catalogRef, (snap) => {
+    return onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'catalogs', shopId), (snap) => {
         if (snap.exists()) setGlobalCatalog(snap.data().items || []);
     });
   }, [user, shopId]);
 
-  // 2. Debitori
+  // Debitori
   useEffect(() => {
     if (!user || !shopId) return;
-    const debtorsRef = doc(db, 'artifacts', appId, 'public', 'data', 'debtors', shopId);
-    return onSnapshot(debtorsRef, (snap) => {
-        if (snap.exists()) setDebtors(snap.data().list || []);
-        else setDebtors([]);
+    return onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'debtors', shopId), (snap) => {
+        if (snap.exists()) {
+            const list = snap.data().list;
+            setDebtors(Array.isArray(list) ? list : []);
+        } else {
+            setDebtors([]);
+        }
     });
   }, [user, shopId]);
 
-  // 3. Foglio Giornaliero
+  // Foglio Giornaliero
   useEffect(() => {
     if (!user || !shopId) return;
     const docId = `${shopId}_${currentDate}`;
-    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'daily_sheets', docId);
-
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+    const unsubscribe = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'daily_sheets', docId), (docSnap) => {
       if (docSnap.exists()) {
         const remote = docSnap.data();
         setData(prev => ({ ...prev, ...remote.data }));
         setCashBreakdown(prev => ({ ...prev, ...remote.cashBreakdown }));
-        if (remote.products && remote.products.length > 0) setProducts(remote.products);
+        if (remote.products && Array.isArray(remote.products)) setProducts(remote.products);
         else if (globalCatalog.length > 0) setProducts(globalCatalog.map(p => ({ ...p, qty: 0 })));
         else setProducts([]);
       } else {
@@ -137,14 +138,13 @@ const DailyCashSheet = () => {
     return () => unsubscribe();
   }, [user, shopId, currentDate, globalCatalog.length]); 
 
-  // --- SALVATAGGIO ---
+  // --- SAVE ---
   const saveToCloud = async (newData, newBreakdown, newProducts) => {
     if (!user || !shopId || !dataLoaded) return;
     setConnectionStatus("syncing");
     const docId = `${shopId}_${currentDate}`;
-    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'daily_sheets', docId);
     try {
-      await setDoc(docRef, {
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'daily_sheets', docId), {
         data: newData, cashBreakdown: newBreakdown, products: newProducts,
         lastUpdated: new Date().toISOString(), updatedBy: user.uid, schemaVersion: 2
       }, { merge: true });
@@ -154,19 +154,19 @@ const DailyCashSheet = () => {
 
   const updateGlobalCatalog = async (list) => {
       if (!user || !shopId) return;
-      const catalogRef = doc(db, 'artifacts', appId, 'public', 'data', 'catalogs', shopId);
-      await setDoc(catalogRef, { items: list.map(({ qty, ...item }) => item) }, { merge: true });
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'catalogs', shopId), { items: list.map(({ qty, ...item }) => item) }, { merge: true });
   };
 
   const saveDebtors = async (list) => {
       if (!user || !shopId) return;
-      const debtorsRef = doc(db, 'artifacts', appId, 'public', 'data', 'debtors', shopId);
-      await setDoc(debtorsRef, { list }, { merge: true });
+      const safeList = Array.isArray(list) ? list : [];
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'debtors', shopId), { list: safeList }, { merge: true });
   };
 
   // --- HANDLERS ---
   const handleChange = (field, value) => {
-    const newData = { ...data, [field]: parseFloat(value) || 0 };
+    const cleanVal = value.toString().replace(',', '.');
+    const newData = { ...data, [field]: parseFloat(cleanVal) || 0 };
     setData(newData);
     saveToCloud(newData, cashBreakdown, products);
   };
@@ -197,13 +197,18 @@ const DailyCashSheet = () => {
     updateGlobalCatalog(newProds);
   };
 
-  // Gestione Modali Debitori
+  // DEBITORI HANDLERS
   const openAddDebtorModal = () => { setNewDebtorName(""); setNewDebtorAmount(""); setShowAddDebtorModal(true); };
   
   const confirmAddDebtor = () => {
     if (!newDebtorName.trim()) return;
-    const amount = parseFloat(newDebtorAmount) || 0;
-    const newDebtors = [...debtors, { id: Date.now(), name: newDebtorName, amount, date: new Date().toISOString().slice(0,10), lastUpdated: new Date().toISOString() }];
+    const cleanAmount = newDebtorAmount.toString().replace(',', '.');
+    const amount = parseFloat(cleanAmount) || 0;
+    
+    const newDebtors = [...debtors, { 
+        id: Date.now(), name: newDebtorName, amount, 
+        date: new Date().toISOString().slice(0,10), lastUpdated: new Date().toISOString() 
+    }];
     setDebtors(newDebtors); saveDebtors(newDebtors); setShowAddDebtorModal(false);
   };
   
@@ -211,7 +216,9 @@ const DailyCashSheet = () => {
   
   const confirmTransaction = () => {
      const { id, type, amount } = transactionData;
-     const val = parseFloat(amount);
+     const cleanAmount = amount.toString().replace(',', '.');
+     const val = parseFloat(cleanAmount);
+     
      if (isNaN(val) || val <= 0) return;
      const newDebtors = debtors.map(d => {
          if (d.id === id) {
@@ -261,12 +268,18 @@ const DailyCashSheet = () => {
     } catch (e) { console.error(e); } finally { setLoadingReport(false); }
   };
 
-  const formatEUR = (val) => new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(val);
-  const formatNum = (val) => new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
+  const formatEUR = (val) => new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(val || 0);
+  const formatNum = (val) => new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0);
   
-  const getDaysInactive = (lastUpdatedStr) => { if (!lastUpdatedStr) return 0; const last = new Date(lastUpdatedStr); const now = new Date(); return Math.ceil(Math.abs(now - last) / (1000 * 60 * 60 * 24)); };
+  const getDaysInactive = (lastUpdatedStr) => { 
+      if (!lastUpdatedStr) return 0; 
+      try {
+          const last = new Date(lastUpdatedStr);
+          const now = new Date();
+          return Math.ceil(Math.abs(now - last) / (1000 * 60 * 60 * 24)); 
+      } catch(e) { return 0; }
+  };
 
-  // --- DOWNLOAD CSV ---
   const downloadCSV = () => {
     let csv = "data:text/csv;charset=utf-8,DATA;VOCE;IMPORTO\n";
     csv += `${currentDate};Incasso Base;${formatNum(data.incassoGiornaliero)}\n${currentDate};Ricariche;${formatNum(data.ricariche)}\n${currentDate};Accessori Tot;${formatNum(totaleAccessori)}\n${currentDate};Utile Accessori;${formatNum(totaleAgio)}\n${currentDate};Teorico;${formatNum(totaleContanteTeorico)}\n${currentDate};Reale;${formatNum(soldiIncassatiTotali)}\n${currentDate};DIFFERENZA;${formatNum(differenza)}\n`;
@@ -275,7 +288,7 @@ const DailyCashSheet = () => {
   };
 
   // --- AI ---
-  const apiKey = ""; // Opzionale
+  const apiKey = ""; 
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const analyzeDiscrepancy = async () => {
@@ -304,26 +317,37 @@ const DailyCashSheet = () => {
     </div>
   );
 
-  if (currentView === 'debtors') return (
-    <div className="min-h-screen bg-slate-50 font-sans p-4 pb-20">
-        <div className="max-w-2xl mx-auto">
-            <div className="bg-white p-4 rounded-xl shadow-sm mb-6 sticky top-0 z-20 flex justify-between items-center border-b border-slate-100"><button onClick={() => setCurrentView('menu')} className="p-2 bg-slate-100 rounded-lg text-slate-600"><Home size={20}/></button><h2 className="font-bold text-lg text-slate-700">Registro Debiti</h2><div className="w-10"></div></div>
-            <div className="bg-gradient-to-br from-rose-500 to-pink-600 text-white p-6 rounded-2xl shadow-lg mb-6 text-center"><p className="text-rose-100 text-xs font-bold uppercase tracking-wider mb-1">Totale Crediti da Riscuotere</p><h1 className="text-4xl font-extrabold">{formatEUR(totalDebt)}</h1></div>
-            <div className="space-y-3">
-                {debtors.length === 0 && <div className="text-center py-10 text-slate-400 bg-white rounded-xl border border-slate-200 border-dashed"><UserMinus className="mx-auto mb-2 opacity-30" size={48}/><p>Nessun cliente debitore.</p></div>}
-                {sortedDebtors.map(debtor => { const daysInactive = getDaysInactive(debtor.lastUpdated || debtor.date); const isLate = daysInactive > 30; return (
-                    <div key={debtor.id} className={`bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center transition-all ${isLate ? 'border-l-4 border-l-red-500 border-t-slate-100 border-r-slate-100 border-b-slate-100 bg-red-50/30' : 'border-slate-100'}`}>
-                        <div className="flex-1"><div className="flex items-center gap-2"><h3 className="font-bold text-slate-800 text-lg">{debtor.name}</h3>{isLate && <span className="bg-red-100 text-red-600 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1"><AlertTriangle size={10}/> Fermo da {daysInactive}gg</span>}</div><p className="text-xs text-slate-400 flex items-center gap-1 mt-1"><Clock size={10}/> {new Date(debtor.lastUpdated || debtor.date).toLocaleDateString('it-IT')}</p></div>
-                        <div className="flex flex-col items-end gap-2"><div className="font-extrabold text-slate-700 text-xl">{formatEUR(debtor.amount)}</div><div className="flex gap-2"><button onClick={() => openTransactionModal(debtor.id, 'subtract')} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 p-2 rounded-lg transition-colors" title="Segna Pagamento"><MinusCircle size={20} /></button><button onClick={() => openTransactionModal(debtor.id, 'add')} className="bg-rose-100 hover:bg-rose-200 text-rose-700 p-2 rounded-lg transition-colors" title="Aggiungi Altro Debito"><PlusCircle size={20} /></button><button onClick={() => removeDebtor(debtor.id)} className="bg-slate-100 hover:bg-slate-200 text-slate-400 p-2 rounded-lg ml-2"><Trash2 size={20} /></button></div></div>
-                    </div>
-                )})}
+  if (currentView === 'debtors') {
+      const safeDebtors = Array.isArray(debtors) ? debtors : [];
+      const totalDebt = safeDebtors.reduce((acc, d) => acc + (parseFloat(d.amount) || 0), 0);
+      const sortedDebtors = [...safeDebtors].sort((a, b) => {
+          const daysA = getDaysInactive(a.lastUpdated || a.date);
+          const daysB = getDaysInactive(b.lastUpdated || b.date);
+          if (daysA !== daysB) return daysB - daysA; 
+          return (b.amount || 0) - (a.amount || 0); 
+      });
+
+      return (
+        <div className="min-h-screen bg-slate-50 font-sans p-4 pb-20">
+            <div className="max-w-2xl mx-auto">
+                <div className="bg-white p-4 rounded-xl shadow-sm mb-6 sticky top-0 z-20 flex justify-between items-center border-b border-slate-100"><button onClick={() => setCurrentView('menu')} className="p-2 bg-slate-100 rounded-lg text-slate-600"><Home size={20}/></button><h2 className="font-bold text-lg text-slate-700">Registro Debiti</h2><div className="w-10"></div></div>
+                <div className="bg-gradient-to-br from-rose-500 to-pink-600 text-white p-6 rounded-2xl shadow-lg mb-6 text-center"><p className="text-rose-100 text-xs font-bold uppercase tracking-wider mb-1">Totale Crediti da Riscuotere</p><h1 className="text-4xl font-extrabold">{formatEUR(totalDebt)}</h1></div>
+                <div className="space-y-3">
+                    {safeDebtors.length === 0 && <div className="text-center py-10 text-slate-400 bg-white rounded-xl border border-slate-200 border-dashed"><UserMinus className="mx-auto mb-2 opacity-30" size={48}/><p>Nessun cliente debitore.</p></div>}
+                    {sortedDebtors.map(debtor => { const daysInactive = getDaysInactive(debtor.lastUpdated || debtor.date); const isLate = daysInactive > 30; return (
+                        <div key={debtor.id} className={`bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center transition-all ${isLate ? 'border-l-4 border-l-red-500 border-t-slate-100 border-r-slate-100 border-b-slate-100 bg-red-50/30' : 'border-slate-100'}`}>
+                            <div className="flex-1"><div className="flex items-center gap-2"><h3 className="font-bold text-slate-800 text-lg">{debtor.name}</h3>{isLate && <span className="bg-red-100 text-red-600 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1"><AlertTriangle size={10}/> Fermo da {daysInactive}gg</span>}</div><p className="text-xs text-slate-400 flex items-center gap-1 mt-1"><Clock size={10}/> {new Date(debtor.lastUpdated || debtor.date).toLocaleDateString('it-IT')}</p></div>
+                            <div className="flex flex-col items-end gap-2"><div className="font-extrabold text-slate-700 text-xl">{formatEUR(debtor.amount)}</div><div className="flex gap-2"><button onClick={() => openTransactionModal(debtor.id, 'subtract')} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 p-2 rounded-lg transition-colors" title="Segna Pagamento"><MinusCircle size={20} /></button><button onClick={() => openTransactionModal(debtor.id, 'add')} className="bg-rose-100 hover:bg-rose-200 text-rose-700 p-2 rounded-lg transition-colors" title="Aggiungi Altro Debito"><PlusCircle size={20} /></button><button onClick={() => removeDebtor(debtor.id)} className="bg-slate-100 hover:bg-slate-200 text-slate-400 p-2 rounded-lg ml-2"><Trash2 size={20} /></button></div></div>
+                        </div>
+                    )})}
+                </div>
+                <button onClick={openAddDebtorModal} className="fixed bottom-6 right-6 w-14 h-14 bg-rose-600 text-white rounded-full shadow-xl flex items-center justify-center hover:scale-105 transition-transform z-50"><Plus size={28} /></button>
             </div>
-            <button onClick={openAddDebtorModal} className="fixed bottom-6 right-6 w-14 h-14 bg-rose-600 text-white rounded-full shadow-xl flex items-center justify-center hover:scale-105 transition-transform z-50"><Plus size={28} /></button>
+            {showAddDebtorModal && (<div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-300"><div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center"><h3 className="font-bold text-slate-700 flex items-center gap-2"><UserPlus size={20} className="text-indigo-600"/> Nuovo Cliente</h3><button onClick={() => setShowAddDebtorModal(false)} className="p-1 bg-white rounded-full text-slate-400 hover:text-red-500"><X size={20}/></button></div><div className="p-6 space-y-4"><div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome Cliente</label><input type="text" value={newDebtorName} onChange={(e) => setNewDebtorName(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-bold text-slate-800" placeholder="Es. Mario Rossi"/></div><div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Importo Debito</label><input type="number" inputMode="decimal" value={newDebtorAmount} onChange={(e) => setNewDebtorAmount(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-bold text-slate-800 text-xl" placeholder="0,00"/></div><button onClick={confirmAddDebtor} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold mt-2">Salva Cliente</button></div></div></div>)}
+            {showTransactionModal && (<div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-300"><div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center"><h3 className="font-bold text-slate-700 flex items-center gap-2">{transactionData.type === 'add' ? <PlusCircle className="text-rose-600"/> : <MinusCircle className="text-emerald-600"/>}{transactionData.type === 'add' ? 'Aggiungi Debito' : 'Registra Pagamento'}</h3><button onClick={() => setShowTransactionModal(false)} className="p-1 bg-white rounded-full text-slate-400 hover:text-red-500"><X size={20}/></button></div><div className="p-6 space-y-4"><p className="text-sm text-slate-500 text-center">{transactionData.type === 'add' ? "Quanto vuoi aggiungere al saldo?" : "Quanto ha pagato il cliente (acconto/saldo)?"}</p><div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">€</span><input type="number" value={transactionData.amount} onChange={(e) => setTransactionData({...transactionData, amount: e.target.value})} className="w-full pl-10 p-4 border-2 border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-extrabold text-slate-800 text-3xl text-center" placeholder="0.00" autoFocus/></div><button onClick={confirmTransaction} className={`w-full py-3 rounded-xl font-bold text-white mt-2 ${transactionData.type === 'add' ? 'bg-rose-600' : 'bg-emerald-600'}`}>Conferma</button></div></div></div>)}
         </div>
-        {showAddDebtorModal && (<div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-300"><div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center"><h3 className="font-bold text-slate-700 flex items-center gap-2"><UserPlus size={20} className="text-indigo-600"/> Nuovo Cliente</h3><button onClick={() => setShowAddDebtorModal(false)} className="p-1 bg-white rounded-full text-slate-400 hover:text-red-500"><X size={20}/></button></div><div className="p-6 space-y-4"><div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome Cliente</label><input type="text" value={newDebtorName} onChange={(e) => setNewDebtorName(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-bold text-slate-800" placeholder="Es. Mario Rossi"/></div><div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Importo Debito</label><input type="number" value={newDebtorAmount} onChange={(e) => setNewDebtorAmount(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-bold text-slate-800 text-xl" placeholder="0.00"/></div><button onClick={confirmAddDebtor} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold mt-2">Salva Cliente</button></div></div></div>)}
-        {showTransactionModal && (<div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-300"><div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center"><h3 className="font-bold text-slate-700 flex items-center gap-2">{transactionData.type === 'add' ? <PlusCircle className="text-rose-600"/> : <MinusCircle className="text-emerald-600"/>}{transactionData.type === 'add' ? 'Aggiungi Debito' : 'Registra Pagamento'}</h3><button onClick={() => setShowTransactionModal(false)} className="p-1 bg-white rounded-full text-slate-400 hover:text-red-500"><X size={20}/></button></div><div className="p-6 space-y-4"><p className="text-sm text-slate-500 text-center">{transactionData.type === 'add' ? "Quanto vuoi aggiungere al saldo?" : "Quanto ha pagato il cliente (acconto/saldo)?"}</p><div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">€</span><input type="number" value={transactionData.amount} onChange={(e) => setTransactionData({...transactionData, amount: e.target.value})} className="w-full pl-10 p-4 border-2 border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-extrabold text-slate-800 text-3xl text-center" placeholder="0.00" autoFocus/></div><button onClick={confirmTransaction} className={`w-full py-3 rounded-xl font-bold text-white mt-2 ${transactionData.type === 'add' ? 'bg-rose-600' : 'bg-emerald-600'}`}>Conferma</button></div></div></div>)}
-    </div>
-  );
+      );
+  }
 
   // Daily Sheet View
   return (
@@ -383,4 +407,4 @@ const DailyCashSheet = () => {
   );
 };
 
-export default DailyCashSheet;
+export default App;
