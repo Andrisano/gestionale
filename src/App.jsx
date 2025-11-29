@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calculator, AlertCircle, CheckCircle, Banknote, CreditCard, Fuel, ShoppingBag, Coins, Wallet, Sparkles, ArrowRight, Download, Calendar, Lock, Users, Plus, Trash2, Package, X, Smartphone, TrendingUp, FileText, PieChart, ShieldCheck, Home, UserMinus, ArrowLeft, Cloud, RefreshCw, PlusCircle, MinusCircle, Clock, AlertTriangle, UserPlus, RefreshCcw, StickyNote, Box, Search, ListChecks } from 'lucide-react';
+import { Calculator, AlertCircle, CheckCircle, Banknote, CreditCard, Fuel, ShoppingBag, Coins, Wallet, Sparkles, ArrowRight, Download, Calendar, Lock, Users, Plus, Trash2, Package, X, Smartphone, TrendingUp, FileText, PieChart, ShieldCheck, Home, UserMinus, ArrowLeft, Cloud, RefreshCw, PlusCircle, MinusCircle, Clock, AlertTriangle, UserPlus, RefreshCcw, StickyNote, Box, Search, ListChecks, ChevronRight } from 'lucide-react';
 
 // Firebase Imports
 import { initializeApp, getApps, getApp } from 'firebase/app';
@@ -28,7 +28,7 @@ const App = () => {
   const [shopId, setShopId] = useState(() => { try { return localStorage.getItem('shopId') || ''; } catch (e) { return ''; } });
   const [isShopIdLocked, setIsShopIdLocked] = useState(() => { try { return !!localStorage.getItem('shopId'); } catch (e) { return false; } });
 
-  const [appVersion] = useState("v2.9.2 (Fix Search)"); 
+  const [appVersion] = useState("v3.0 (Fix Icone)"); 
   
   const [currentView, setCurrentView] = useState('menu'); 
   const [currentDate, setCurrentDate] = useState(new Date().toISOString().slice(0,10));
@@ -52,8 +52,9 @@ const App = () => {
   const [globalCatalog, setGlobalCatalog] = useState([]); 
   const [debtors, setDebtors] = useState([]);
 
-  // Stati Modali & Variabili
-  const [searchTerm, setSearchTerm] = useState(""); // <--- FIX: Aggiunto stato mancante
+  // --- STATI MODALI E RICERCA ---
+  const [searchTerm, setSearchTerm] = useState("");
+  
   const [showProductModal, setShowProductModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [monthlyStats, setMonthlyStats] = useState(null);
@@ -142,7 +143,7 @@ const App = () => {
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'debtors', shopId), { list: safeList }, { merge: true });
   };
 
-  // --- HANDLERS ---
+  // --- HANDLERS GENERICI ---
   const handleChange = (field, value) => {
     const cleanVal = value.toString().replace(',', '.');
     const newData = { ...data, [field]: parseFloat(cleanVal) || 0 };
@@ -153,6 +154,7 @@ const App = () => {
     setCashBreakdown(newBreakdown); saveToCloud(data, newBreakdown, products);
   };
 
+  // --- HANDLERS ACCESSORI ---
   const addProductToDay = (catalogItem = null) => {
     const newProduct = catalogItem 
         ? { ...catalogItem, id: Date.now(), qty: 1 } 
@@ -171,6 +173,7 @@ const App = () => {
     setProducts(newProds); saveToCloud(data, cashBreakdown, newProds);
   };
 
+  // --- HANDLERS INVENTARIO ---
   const addNewInventoryItem = () => {
       if(!newItemName) return;
       const price = parseFloat(newItemPrice.toString().replace(',','.')) || 0;
@@ -181,7 +184,6 @@ const App = () => {
       updateGlobalCatalog(newCatalog);
       setNewItemName(""); setNewItemPrice(""); setNewItemAgio(""); setNewItemStock(""); setShowInventoryModal(false);
   };
-
   const updateInventoryStock = (id, delta) => {
       const newCatalog = globalCatalog.map(item => {
           if(item.id === id) return { ...item, stock: Math.max(0, (item.stock || 0) + delta) };
@@ -189,7 +191,6 @@ const App = () => {
       });
       updateGlobalCatalog(newCatalog);
   };
-  
   const removeInventoryItem = (id) => {
       if(!confirm("Eliminare definitivamente dall'inventario?")) return;
       const newCatalog = globalCatalog.filter(i => i.id !== id);
@@ -242,6 +243,9 @@ const App = () => {
      }).filter(d => d.amount > 0.01);
      setDebtors(newDebtors); saveDebtors(newDebtors); setShowTransactionModal(false);
   };
+  const removeDebtor = (id) => { if(!confirm("Eliminare definitivamente?")) return; const newDebtors = debtors.filter(d => d.id !== id); setDebtors(newDebtors); saveDebtors(newDebtors); };
+
+  const openHistory = (debtor) => { setSelectedDebtor(debtor); setShowHistoryModal(true); };
 
   // --- CALCOLI ---
   const totaleAccessori = products.reduce((acc, p) => acc + (parseFloat(p.price || 0) * parseFloat(p.qty || 0)), 0);
@@ -347,6 +351,7 @@ const App = () => {
       );
   }
 
+  // --- VISTA CASSA ---
   return (
     <div className="min-h-screen bg-slate-50 font-sans pb-20 md:pb-0"> 
       <div className="max-w-7xl mx-auto md:p-6 p-2">
@@ -359,21 +364,61 @@ const App = () => {
                 <button onClick={generateMonthlyReport} className="px-3 bg-indigo-600 text-white rounded-lg shadow-sm flex items-center justify-center active:scale-95 transition-transform"><PieChart size={20} /></button>
             </div>
         </div>
+        
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
                 <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2"><Banknote size={14}/> Entrate</h3>
                 <div className="mb-4"><label className="text-xs font-bold text-slate-500">Incasso Base</label><input type="number" inputMode="decimal" value={data.incassoGiornaliero||''} onChange={e => handleChange('incassoGiornaliero', e.target.value)} className="w-full border rounded-lg p-2 font-bold text-xl"/></div>
-                <div className="mb-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100"><div className="flex justify-between items-center mb-2"><span className="text-sm font-bold text-indigo-700">Accessori</span><span className="font-bold">{formatEUR(totaleAccessori)}</span></div><select className="w-full p-2 mb-2 text-sm rounded border" onChange={(e) => {if(e.target.value === "") return; const item = globalCatalog.find(i => i.id.toString() === e.target.value); if(item) addProductToDay(item); e.target.value = "";}}><option value="">+ Aggiungi da Inventario...</option>{globalCatalog.map(i => <option key={i.id} value={i.id}>{i.name} ({formatEUR(i.price)}) - Giac: {i.stock}</option>)}</select><button onClick={() => addProductToDay(null)} className="w-full text-xs bg-white border border-indigo-200 py-1 rounded text-indigo-500">O crea nuovo manuale</button><div className="mt-2 space-y-1">{products.map(p => (<div key={p.id} className="flex justify-between items-center text-xs bg-white p-1 rounded border border-indigo-100"><span>{p.name}</span><div className="flex items-center gap-2"><span>{formatEUR(p.price)}</span><input type="number" className="w-8 text-center border rounded" value={p.qty} onChange={e => updateProductDay(p.id, 'qty', e.target.value)} /><Trash2 size={12} className="text-red-400 cursor-pointer" onClick={() => removeProductDay(p.id)}/></div></div>))}</div></div>
-                <div className="space-y-2">{[{l:"Ricariche",f:"ricariche",c:"text-emerald-600"},{l:"Riscossioni",f:"riscossioni",c:"text-emerald-600"},{l:"Crediti",f:"crediti",c:"text-red-500"},{l:"POS",f:"pos",c:"text-red-500"},{l:"Buoni",f:"buoniCarburante",c:"text-red-500"}].map(i => (<div key={i.f} className="flex justify-between items-center"><span className={`text-sm font-bold ${i.c}`}>{i.l}</span><input type="number" inputMode="decimal" className="w-24 text-right font-bold border-b outline-none" value={data[i.f]||''} onChange={e => handleChange(i.f, e.target.value)} /></div>))}</div>
+                
+                <div className="mb-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                    <div className="flex justify-between items-center mb-2"><span className="text-sm font-bold text-indigo-700">Accessori</span><span className="font-bold">{formatEUR(totaleAccessori)}</span></div>
+                    <select className="w-full p-2 mb-2 text-sm rounded border" onChange={(e) => {
+                        if(e.target.value === "") return;
+                        const item = globalCatalog.find(i => i.id.toString() === e.target.value);
+                        if(item) addProductToDay(item); 
+                        e.target.value = "";
+                    }}>
+                        <option value="">+ Aggiungi da Inventario...</option>
+                        {globalCatalog.map(i => <option key={i.id} value={i.id}>{i.name} ({formatEUR(i.price)}) - Giac: {i.stock}</option>)}
+                    </select>
+                    <button onClick={() => addProductToDay(null)} className="w-full text-xs bg-white border border-indigo-200 py-1 rounded text-indigo-500">O crea nuovo manuale</button>
+                    
+                    <div className="mt-2 space-y-1">
+                        {products.map(p => (
+                            <div key={p.id} className="flex justify-between items-center text-xs bg-white p-1 rounded border border-indigo-100">
+                                <span>{p.name}</span>
+                                <div className="flex items-center gap-2">
+                                    <span>{formatEUR(p.price)}</span>
+                                    <input type="number" className="w-8 text-center border rounded" value={p.qty} onChange={e => updateProductDay(p.id, 'qty', e.target.value)} />
+                                    <Trash2 size={12} className="text-red-400 cursor-pointer" onClick={() => removeProductDay(p.id)}/>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="space-y-2">
+                    {[{l:"Ricariche",f:"ricariche",c:"text-emerald-600"},{l:"Riscossioni",f:"riscossioni",c:"text-emerald-600"},{l:"Crediti",f:"crediti",c:"text-red-500"},{l:"POS",f:"pos",c:"text-red-500"},{l:"Buoni",f:"buoniCarburante",c:"text-red-500"}].map(i => (
+                        <div key={i.f} className="flex justify-between items-center"><span className={`text-sm font-bold ${i.c}`}>{i.l}</span><input type="number" inputMode="decimal" className="w-24 text-right font-bold border-b outline-none" value={data[i.f]||''} onChange={e => handleChange(i.f, e.target.value)} /></div>
+                    ))}
+                </div>
              </div>
+
              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
                  <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-3">Conteggio</h3>
                  <div className="grid grid-cols-1 gap-2">{[500,200,100,50,20,10,5].map(d => <div key={d} className="flex justify-between bg-slate-50 p-1 rounded"><span className="font-bold text-slate-500">€{d}</span><input type="number" inputMode="numeric" className="w-16 text-center bg-transparent font-bold" placeholder="0" value={cashBreakdown[d]||''} onChange={e => handleCashChange(d, e.target.value)}/></div>)}</div>
-                 <div className="mt-4 grid grid-cols-3 gap-2"><div className="col-span-1"><label className="text-[10px] font-bold text-slate-500 block mb-1">Monete</label><input type="number" inputMode="decimal" className="w-full border rounded p-1 text-center font-bold" value={data.totaleMonete||''} onChange={e => handleChange('totaleMonete', e.target.value)}/></div><div className="col-span-1"><label className="text-[10px] font-bold text-slate-500 block mb-1">Assegni</label><input type="number" inputMode="decimal" className="w-full border rounded p-1 text-center font-bold" value={data.totaleAssegni||''} onChange={e => handleChange('totaleAssegni', e.target.value)}/></div><div className="col-span-1"><label className="text-[10px] font-bold text-emerald-600 block mb-1">Mattina</label><input type="number" inputMode="decimal" className="w-full border border-emerald-200 bg-emerald-50 rounded p-1 text-center font-bold text-emerald-700" value={data.soldiLasciatiMattina||''} onChange={e => handleChange('soldiLasciatiMattina', e.target.value)}/></div></div>
+                 <div className="mt-4 grid grid-cols-3 gap-2">
+                     <div className="col-span-1"><label className="text-[10px] font-bold text-slate-500 block mb-1">Monete</label><input type="number" inputMode="decimal" className="w-full border rounded p-1 text-center font-bold" value={data.totaleMonete||''} onChange={e => handleChange('totaleMonete', e.target.value)}/></div>
+                     <div className="col-span-1"><label className="text-[10px] font-bold text-slate-500 block mb-1">Assegni</label><input type="number" inputMode="decimal" className="w-full border rounded p-1 text-center font-bold" value={data.totaleAssegni||''} onChange={e => handleChange('totaleAssegni', e.target.value)}/></div>
+                     <div className="col-span-1"><label className="text-[10px] font-bold text-emerald-600 block mb-1">Mattina</label><input type="number" inputMode="decimal" className="w-full border border-emerald-200 bg-emerald-50 rounded p-1 text-center font-bold text-emerald-700" value={data.soldiLasciatiMattina||''} onChange={e => handleChange('soldiLasciatiMattina', e.target.value)}/></div>
+                 </div>
              </div>
+
              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
                  <div className="bg-slate-800 text-white p-4 rounded-xl text-center mb-4"><span className="text-xs font-bold uppercase">Totale Reale</span><div className="text-3xl font-bold">{formatEUR(soldiIncassatiTotali)}</div></div>
                  <div className={`p-4 rounded-xl text-center border-2 ${differenza===0?'border-emerald-500 bg-emerald-50':'border-rose-500 bg-rose-50'}`}><span className="text-xs font-bold uppercase">Differenza</span><div className={`text-3xl font-black ${differenza===0?'text-emerald-600':'text-rose-600'}`}>{differenza>0?'+':''}{formatEUR(differenza)}</div></div>
+                 
+                 {/* CHECKLIST CHIUSURA */}
                  <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-xl p-4"><h4 className="text-xs font-bold text-yellow-700 uppercase mb-3 flex items-center gap-1"><ListChecks size={14}/> Checklist Chiusura</h4><div className="space-y-2"><label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer"><input type="checkbox" className="accent-indigo-600 w-4 h-4" checked={checklist.debtors} onChange={e => setChecklist({...checklist, debtors: e.target.checked})} /><span>Ho segnato i Debitori?</span></label><label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer"><input type="checkbox" className="accent-indigo-600 w-4 h-4" checked={checklist.cash} onChange={e => setChecklist({...checklist, cash: e.target.checked})} /><span>Contati soldi nel cassetto?</span></label></div></div>
                  <div className="mt-4 p-3 bg-slate-50 rounded-lg text-center"><button onClick={downloadCSV} className="w-full flex items-center justify-center gap-2 text-slate-500 text-xs font-bold hover:text-indigo-600 transition-colors"><Download size={14}/> Scarica Excel Giornata</button></div>
              </div>
