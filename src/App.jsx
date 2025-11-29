@@ -28,12 +28,43 @@ const App = () => {
   const [shopId, setShopId] = useState(() => { try { return localStorage.getItem('shopId') || ''; } catch (e) { return ''; } });
   const [isShopIdLocked, setIsShopIdLocked] = useState(() => { try { return !!localStorage.getItem('shopId'); } catch (e) { return false; } });
 
-  const [appVersion] = useState("v3.0 (Fix Icone)"); 
+  const [appVersion] = useState("v2.9.5 (Back Button Fix)"); 
   
   const [currentView, setCurrentView] = useState('menu'); 
   const [currentDate, setCurrentDate] = useState(new Date().toISOString().slice(0,10));
   const [connectionStatus, setConnectionStatus] = useState("disconnected"); 
   const [dataLoaded, setDataLoaded] = useState(false);
+
+  // --- GESTIONE TASTO INDIETRO (NAVIGAZIONE) ---
+  useEffect(() => {
+    // Quando l'app parte, ci assicuriamo di avere uno stato base nella cronologia
+    window.history.replaceState({ view: 'menu' }, null, '');
+
+    // Questa funzione scatta quando premi il tasto "Indietro" del telefono
+    const handlePopState = (event) => {
+      if (event.state && event.state.view) {
+        // Se c'è una vista salvata nella cronologia, la usiamo
+        setCurrentView(event.state.view);
+      } else {
+        // Se non c'è stato (es. siamo tornati all'inizio), forziamo il menu
+        setCurrentView('menu');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Funzione per cambiare pagina e salvare la storia
+  const navigateTo = (viewName) => {
+    window.history.pushState({ view: viewName }, null, '');
+    setCurrentView(viewName);
+  };
+
+  // Funzione per tornare indietro via codice (freccia in alto a sinistra)
+  const goBack = () => {
+    window.history.back();
+  };
 
   // --- AUTH ---
   useEffect(() => {
@@ -52,9 +83,8 @@ const App = () => {
   const [globalCatalog, setGlobalCatalog] = useState([]); 
   const [debtors, setDebtors] = useState([]);
 
-  // --- STATI MODALI E RICERCA ---
+  // Stati Modali & Variabili
   const [searchTerm, setSearchTerm] = useState("");
-  
   const [showProductModal, setShowProductModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [monthlyStats, setMonthlyStats] = useState(null);
@@ -245,10 +275,9 @@ const App = () => {
   };
   const removeDebtor = (id) => { if(!confirm("Eliminare definitivamente?")) return; const newDebtors = debtors.filter(d => d.id !== id); setDebtors(newDebtors); saveDebtors(newDebtors); };
 
-  const openHistory = (debtor) => { setSelectedDebtor(debtor); setShowHistoryModal(true); };
-
   // --- CALCOLI ---
   const totaleAccessori = products.reduce((acc, p) => acc + (parseFloat(p.price || 0) * parseFloat(p.qty || 0)), 0);
+  const totaleAgio = products.reduce((acc, p) => acc + (parseFloat(p.agio || 0) * parseFloat(p.qty || 0)), 0);
   const totaleBanconote = Object.keys(cashBreakdown).reduce((acc, k) => acc + (parseFloat(k) * cashBreakdown[k]), 0);
   const soldiIncassatiTotali = totaleBanconote + data.totaleMonete + data.totaleAssegni + data.soldiLasciatiMattina;
   const totaleContanteTeorico = data.incassoGiornaliero + data.riscossioni + data.ricariche + totaleAccessori - data.crediti - data.pos - data.buoniCarburante;
@@ -303,18 +332,19 @@ const App = () => {
     <div className="min-h-screen bg-slate-50 p-4 font-sans flex flex-col items-center justify-center">
         <div className="w-full max-w-md space-y-4">
             <div className="text-center mb-6"><div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold mb-2"><Sparkles size={12} /> {appVersion}</div><h1 className="text-2xl font-bold text-slate-800">{shopId}</h1></div>
-            <button onClick={() => setCurrentView('daily')} className="w-full bg-white p-5 rounded-2xl shadow-md border border-slate-100 flex items-center gap-4 active:scale-95 transition-transform"><div className="bg-blue-100 p-3 rounded-xl"><Calculator className="w-6 h-6 text-blue-600" /></div><div className="text-left flex-1"><h3 className="font-bold text-slate-700">Cassa Giornaliera</h3><p className="text-xs text-slate-400">Quadratura e chiusura</p></div><ArrowRight className="text-slate-300" /></button>
-            <button onClick={() => setCurrentView('debtors')} className="w-full bg-white p-5 rounded-2xl shadow-md border border-slate-100 flex items-center gap-4 active:scale-95 transition-transform"><div className="bg-rose-100 p-3 rounded-xl"><Users className="w-6 h-6 text-rose-600" /></div><div className="text-left flex-1"><h3 className="font-bold text-slate-700">Clienti Debitori</h3><p className="text-xs text-slate-400">Gestione crediti e note</p></div><ArrowRight className="text-slate-300" /></button>
-            <button onClick={() => setCurrentView('inventory')} className="w-full bg-white p-5 rounded-2xl shadow-md border border-slate-100 flex items-center gap-4 active:scale-95 transition-transform"><div className="bg-amber-100 p-3 rounded-xl"><Package className="w-6 h-6 text-amber-600" /></div><div className="text-left flex-1"><h3 className="font-bold text-slate-700">Inventario</h3><p className="text-xs text-slate-400">Gestione magazzino accessori</p></div><ArrowRight className="text-slate-300" /></button>
+            <button onClick={() => navigateTo('daily')} className="w-full bg-white p-5 rounded-2xl shadow-md border border-slate-100 flex items-center gap-4 active:scale-95 transition-transform"><div className="bg-blue-100 p-3 rounded-xl"><Calculator className="w-6 h-6 text-blue-600" /></div><div className="text-left flex-1"><h3 className="font-bold text-slate-700">Cassa Giornaliera</h3><p className="text-xs text-slate-400">Quadratura e chiusura</p></div><ArrowRight className="text-slate-300" /></button>
+            <button onClick={() => navigateTo('debtors')} className="w-full bg-white p-5 rounded-2xl shadow-md border border-slate-100 flex items-center gap-4 active:scale-95 transition-transform"><div className="bg-rose-100 p-3 rounded-xl"><Users className="w-6 h-6 text-rose-600" /></div><div className="text-left flex-1"><h3 className="font-bold text-slate-700">Clienti Debitori</h3><p className="text-xs text-slate-400">Gestione crediti e note</p></div><ArrowRight className="text-slate-300" /></button>
+            <button onClick={() => navigateTo('inventory')} className="w-full bg-white p-5 rounded-2xl shadow-md border border-slate-100 flex items-center gap-4 active:scale-95 transition-transform"><div className="bg-amber-100 p-3 rounded-xl"><Package className="w-6 h-6 text-amber-600" /></div><div className="text-left flex-1"><h3 className="font-bold text-slate-700">Inventario</h3><p className="text-xs text-slate-400">Gestione magazzino accessori</p></div><ArrowRight className="text-slate-300" /></button>
             <div className="flex gap-2 mt-4"><button onClick={() => {if(confirm('Uscire?')){localStorage.removeItem('shopId'); setIsShopIdLocked(false)}}} className="flex-1 py-3 text-slate-400 text-xs font-bold hover:text-red-500">ESCI</button><button onClick={() => window.location.reload()} className="flex-1 py-3 text-indigo-400 text-xs font-bold hover:text-indigo-600 flex justify-center gap-1"><RefreshCcw size={14}/> AGGIORNA</button></div>
         </div>
     </div>
   );
 
+  // --- VISTA INVENTARIO ---
   if (currentView === 'inventory') return (
     <div className="min-h-screen bg-slate-50 font-sans p-4 pb-20">
        <div className="max-w-2xl mx-auto">
-          <div className="bg-white p-4 rounded-xl shadow-sm mb-4 sticky top-0 z-20 flex justify-between items-center border-b border-slate-100"><button onClick={() => setCurrentView('menu')} className="p-2 bg-slate-100 rounded-lg text-slate-600"><Home size={20}/></button><h2 className="font-bold text-lg text-slate-700">Magazzino</h2><button onClick={() => setShowInventoryModal(true)} className="p-2 bg-amber-100 text-amber-700 rounded-lg"><Plus size={20}/></button></div>
+          <div className="bg-white p-4 rounded-xl shadow-sm mb-4 sticky top-0 z-20 flex justify-between items-center border-b border-slate-100"><button onClick={goBack} className="p-2 bg-slate-100 rounded-lg text-slate-600"><Home size={20}/></button><h2 className="font-bold text-lg text-slate-700">Magazzino</h2><button onClick={() => setShowInventoryModal(true)} className="p-2 bg-amber-100 text-amber-700 rounded-lg"><Plus size={20}/></button></div>
           <div className="grid gap-3">{globalCatalog.length === 0 && <div className="text-center py-10 text-slate-400"><Box size={48} className="mx-auto mb-2 opacity-30"/><p>Inventario vuoto.</p></div>}{globalCatalog.map(item => (<div key={item.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center"><div><h3 className="font-bold text-slate-800">{item.name}</h3><div className="text-xs text-slate-400 flex gap-2 mt-1"><span>Prezzo: {formatEUR(item.price)}</span><span>Agio: {formatEUR(item.agio)}</span></div></div><div className="flex flex-col items-end gap-1"><span className="text-[10px] text-slate-400 uppercase font-bold">Giacenza</span><div className="flex items-center gap-2 bg-slate-50 rounded-lg p-1 border border-slate-200"><button onClick={() => updateInventoryStock(item.id, -1)} className="w-6 h-6 flex items-center justify-center bg-white rounded shadow-sm text-slate-600 font-bold">-</button><span className={`font-bold w-6 text-center ${item.stock < 5 ? 'text-red-500' : 'text-slate-700'}`}>{item.stock || 0}</span><button onClick={() => updateInventoryStock(item.id, 1)} className="w-6 h-6 flex items-center justify-center bg-white rounded shadow-sm text-slate-600 font-bold">+</button></div><button onClick={() => removeInventoryItem(item.id)} className="text-[10px] text-red-300 hover:text-red-500 mt-1">Elimina</button></div></div>))}</div>
           {showInventoryModal && (<div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4 animate-in zoom-in"><div className="flex justify-between items-center border-b pb-2"><h3 className="font-bold text-lg">Nuovo Articolo</h3><X onClick={() => setShowInventoryModal(false)} className="cursor-pointer"/></div><div><label className="text-xs font-bold text-slate-500">Nome Prodotto</label><input className="w-full border p-2 rounded-lg font-bold" value={newItemName} onChange={e => setNewItemName(e.target.value)} /></div><div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-bold text-slate-500">Prezzo (€)</label><input type="number" className="w-full border p-2 rounded-lg" value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)} /></div><div><label className="text-xs font-bold text-slate-500">Agio (€)</label><input type="number" className="w-full border p-2 rounded-lg" value={newItemAgio} onChange={e => setNewItemAgio(e.target.value)} /></div></div><div><label className="text-xs font-bold text-slate-500">Giacenza Iniziale (Pezzi)</label><input type="number" className="w-full border p-2 rounded-lg" value={newItemStock} onChange={e => setNewItemStock(e.target.value)} /></div><button onClick={addNewInventoryItem} className="w-full bg-amber-500 text-white py-3 rounded-xl font-bold">Aggiungi a Inventario</button></div></div>)}
        </div>
@@ -330,7 +360,7 @@ const App = () => {
       return (
         <div className="min-h-screen bg-slate-50 font-sans p-4 pb-20">
             <div className="max-w-2xl mx-auto">
-                <div className="bg-white p-4 rounded-xl shadow-sm mb-4 sticky top-0 z-20 border-b border-slate-100"><div className="flex justify-between items-center mb-3"><button onClick={() => setCurrentView('menu')} className="p-2 bg-slate-100 rounded-lg text-slate-600"><Home size={20}/></button><h2 className="font-bold text-lg text-slate-700">Registro Debiti</h2><button onClick={openAddDebtorModal} className="p-2 bg-rose-100 text-rose-700 rounded-lg"><Plus size={20}/></button></div><div className="relative"><Search className="absolute left-3 top-2.5 text-slate-400" size={18}/><input type="text" placeholder="Cerca cliente..." className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-rose-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/></div></div>
+                <div className="bg-white p-4 rounded-xl shadow-sm mb-4 sticky top-0 z-20 border-b border-slate-100"><div className="flex justify-between items-center mb-3"><button onClick={goBack} className="p-2 bg-slate-100 rounded-lg text-slate-600"><Home size={20}/></button><h2 className="font-bold text-lg text-slate-700">Registro Debiti</h2><button onClick={openAddDebtorModal} className="p-2 bg-rose-100 text-rose-700 rounded-lg"><Plus size={20}/></button></div><div className="relative"><Search className="absolute left-3 top-2.5 text-slate-400" size={18}/><input type="text" placeholder="Cerca cliente..." className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-rose-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/></div></div>
                 <div className="bg-gradient-to-br from-rose-500 to-pink-600 text-white p-6 rounded-2xl shadow-lg mb-6 text-center"><p className="text-rose-100 text-xs font-bold uppercase tracking-wider mb-1">Totale Crediti</p><h1 className="text-4xl font-extrabold">{formatEUR(totalDebt)}</h1></div>
                 <div className="space-y-3">
                     {sortedDebtors.map(debtor => (
@@ -357,7 +387,7 @@ const App = () => {
       <div className="max-w-7xl mx-auto md:p-6 p-2">
         <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-100 mb-4 flex flex-col gap-3 sticky top-0 z-30">
             <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2"><button onClick={() => setCurrentView('menu')} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg mr-1"><ArrowLeft size={18}/></button><div className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500' : 'bg-red-500'}`}></div><div className="font-bold text-sm">{shopId}</div></div>
+                <div className="flex items-center gap-2"><button onClick={goBack} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg mr-1"><ArrowLeft size={18}/></button><div className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500' : 'bg-red-500'}`}></div><div className="font-bold text-sm">{shopId}</div></div>
             </div>
             <div className="flex gap-2">
                 <div className="flex flex-1 items-center justify-between bg-slate-100 rounded-lg p-1"><button onClick={() => {const d=new Date(currentDate); d.setDate(d.getDate()-1); setCurrentDate(d.toISOString().slice(0,10))}} className="p-2 text-slate-500"><ArrowLeft size={16}/></button><input type="date" value={currentDate} onChange={(e) => setCurrentDate(e.target.value)} className="bg-transparent font-bold text-sm outline-none"/><button onClick={() => {const d=new Date(currentDate); d.setDate(d.getDate()+1); setCurrentDate(d.toISOString().slice(0,10))}} className="p-2 text-slate-500"><ArrowRight size={16}/></button></div>
