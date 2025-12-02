@@ -1,7 +1,7 @@
 {
-  "name": "gestionale-cassa-v2",
+  "name": "gestionale-cassa-v3",
   "private": true,
-  "version": "2.5.0",
+  "version": "3.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,9 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "firebase": "^10.8.0",
-    "lucide-react": "^0.344.0"
+    "lucide-react": "^0.344.0",
+    "jspdf": "^2.5.1",
+    "jspdf-autotable": "^3.8.2"
   },
   "devDependencies": {
     "@types/react": "^18.2.56",
