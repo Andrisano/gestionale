@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calculator, AlertCircle, CheckCircle, Banknote, CreditCard, Fuel, ShoppingBag, Coins, Wallet, Sparkles, ArrowRight, Download, Calendar, Lock, Users, Plus, Trash2, Package, X, Smartphone, TrendingUp, FileText, PieChart, ShieldCheck, Home, UserMinus, ArrowLeft, Cloud, RefreshCw, PlusCircle, MinusCircle, Clock, AlertTriangle, UserPlus, RefreshCcw, StickyNote, Box, Search, ListChecks, ChevronRight, Briefcase, Save, FileDown } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { Calculator, AlertCircle, CheckCircle, Banknote, CreditCard, Fuel, ShoppingBag, Coins, Wallet, Sparkles, ArrowRight, Download, Calendar, Lock, Users, Plus, Trash2, Package, X, Smartphone, TrendingUp, FileText, PieChart, ShieldCheck, Home, UserMinus, ArrowLeft, Cloud, RefreshCw, PlusCircle, MinusCircle, Clock, AlertTriangle, UserPlus, RefreshCcw, StickyNote, Box, Search, ListChecks, ChevronRight, Briefcase, Save } from 'lucide-react';
 
 // Firebase Imports
 import { initializeApp, getApps, getApp } from 'firebase/app';
@@ -30,7 +28,7 @@ const App = () => {
   const [shopId, setShopId] = useState(() => { try { return localStorage.getItem('shopId') || ''; } catch (e) { return ''; } });
   const [isShopIdLocked, setIsShopIdLocked] = useState(() => { try { return !!localStorage.getItem('shopId'); } catch (e) { return false; } });
 
-  const [appVersion] = useState("v3.5 Stabile"); 
+  const [appVersion] = useState("v3.6 (No PDF)"); 
   
   const [currentView, setCurrentView] = useState('menu'); 
   const [currentDate, setCurrentDate] = useState(new Date().toISOString().slice(0,10));
@@ -90,21 +88,29 @@ const App = () => {
   // --- SYNC ---
   useEffect(() => {
     if (!user || !shopId) return;
-    // 1. Catalogo
-    const unsubCatalog = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'catalogs', shopId), (snap) => {
+    return onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'catalogs', shopId), (snap) => {
         if (snap.exists()) setGlobalCatalog(snap.data().items || []);
     });
-    // 2. Debitori
-    const unsubDebtors = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'debtors', shopId), (snap) => {
+  }, [user, shopId]);
+
+  useEffect(() => {
+    if (!user || !shopId) return;
+    return onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'debtors', shopId), (snap) => {
         if (snap.exists()) { const list = snap.data().list; setDebtors(Array.isArray(list) ? list : []); } else { setDebtors([]); }
     });
-    // 3. Investitori
-    const unsubInvestors = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'investors', shopId), (snap) => {
+  }, [user, shopId]);
+
+  useEffect(() => {
+    if (!user || !shopId) return;
+    return onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'investors', shopId), (snap) => {
         if (snap.exists()) { const list = snap.data().list; setInvestors(Array.isArray(list) ? list : []); } else { setInvestors([]); }
     });
-    // 4. Cassa Giornaliera
+  }, [user, shopId]);
+
+  useEffect(() => {
+    if (!user || !shopId) return;
     const docId = `${shopId}_${currentDate}`;
-    const unsubDaily = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'daily_sheets', docId), (docSnap) => {
+    const unsubscribe = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'daily_sheets', docId), (docSnap) => {
       if (docSnap.exists()) {
         const remote = docSnap.data();
         setData(prev => ({ ...prev, ...remote.data }));
@@ -118,8 +124,7 @@ const App = () => {
       }
       setDataLoaded(true);
     });
-
-    return () => { unsubCatalog(); unsubDebtors(); unsubInvestors(); unsubDaily(); };
+    return () => unsubscribe();
   }, [user, shopId, currentDate]); 
 
   // --- SAVE FUNCTIONS ---
@@ -153,39 +158,7 @@ const App = () => {
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'investors', shopId), { list: safeList }, { merge: true });
   };
 
-  // --- PDF GENERATION ---
-  const generateDebtorsPDF = () => {
-    const doc = new jsPDF();
-    const isDebtors = activeContext === 'debtors';
-    const list = isDebtors ? debtors : investors;
-    const title = isDebtors ? "LISTA DEBITORI" : "LISTA INVESTITORI";
-    const color = isDebtors ? [225, 29, 72] : [124, 58, 237]; 
-
-    doc.setFontSize(20); doc.setTextColor(...color); doc.text(shopId, 14, 20);
-    doc.setFontSize(14); doc.setTextColor(40); doc.text(title, 14, 30);
-    doc.setFontSize(10); doc.text(`Data estrazione: ${new Date().toLocaleDateString('it-IT')}`, 14, 36);
-
-    const tableColumn = ["Nome", "Data Inizio", "Note", "Importo (€)"];
-    const tableRows = [];
-    let total = 0;
-
-    const sortedList = [...list].sort((a, b) => a.name.localeCompare(b.name));
-    sortedList.forEach(item => {
-        const itemData = [item.name, new Date(item.date).toLocaleDateString('it-IT'), item.note || "-", formatEUR(item.amount)];
-        tableRows.push(itemData);
-        total += parseFloat(item.amount) || 0;
-    });
-
-    tableRows.push(["", "", "TOTALE:", formatEUR(total)]);
-    autoTable(doc, {
-        head: [tableColumn], body: tableRows, startY: 45, theme: 'grid',
-        headStyles: { fillColor: color, textColor: 255, fontStyle: 'bold' },
-        columnStyles: { 3: { halign: 'right', fontStyle: 'bold' } }
-    });
-    doc.save(`${title}_${shopId}.pdf`);
-  };
-
-  // --- BACKUP JSON ---
+  // --- BACKUP JSON LOCALE (Senza PDF) ---
   const downloadDebtorsBackup = () => {
     const list = activeContext === 'debtors' ? debtors : investors;
     if (list.length === 0) { alert("Nessun dato da salvare."); return; }
@@ -194,8 +167,11 @@ const App = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `BACKUP_${activeContext}_${shopId}.json`;
-    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    const timestamp = new Date().toISOString().slice(0,10);
+    link.download = `BACKUP_${activeContext}_${shopId}_${timestamp}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // --- HANDLERS GENERICI ---
@@ -218,8 +194,7 @@ const App = () => {
     setProducts(newProds); saveToCloud(data, cashBreakdown, newProds);
   };
   const updateProductDay = (id, field, val) => {
-    const cleanVal = val.toString().replace(',', '.');
-    const newProds = products.map(p => p.id === id ? { ...p, [field]: parseFloat(cleanVal) || val } : p);
+    const newProds = products.map(p => p.id === id ? { ...p, [field]: val } : p);
     setProducts(newProds); saveToCloud(data, cashBreakdown, newProds);
   };
   const removeProductDay = (id) => {
@@ -324,19 +299,88 @@ const App = () => {
     const link = document.createElement("a"); link.href = encodeURI(csv); link.download = `Cassa_${shopId}_${currentDate}.csv`; document.body.appendChild(link); link.click(); link.remove();
   };
   
-  // --- RENDER ---
+  // --- REPORT ---
+  const generateMonthlyReport = async () => {
+    if (!user || !shopId) { alert("Attendi il caricamento"); return; }
+    setLoadingReport(true); setShowReportModal(true);
+    const currentMonthPrefix = `${shopId}_${currentDate.slice(0, 7)}`;
+    try {
+        const querySnapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'daily_sheets'));
+        let totalDiff = 0, totalAgioMese = 0, daysData = [];
+        querySnapshot.forEach((doc) => {
+            if (doc.id.startsWith(currentMonthPrefix)) {
+                const dData = doc.data();
+                const dayP = dData.products || [];
+                const dayD = dData.data || {};
+                const dayB = dData.cashBreakdown || {};
+                const dayAgio = dayP.reduce((acc, p) => acc + (parseFloat(p.agio||0)*parseFloat(p.qty||0)), 0);
+                const dayAcc = dayP.reduce((acc, p) => acc + (parseFloat(p.price||0)*parseFloat(p.qty||0)), 0);
+                const dayReal = Object.keys(dayB).reduce((acc, k) => acc + (parseFloat(k)*dayB[k]), 0) + (dayD.totaleMonete||0) + (dayD.totaleAssegni||0) + (dayD.soldiLasciatiMattina||0);
+                const dayTheo = (dayD.incassoGiornaliero||0) + (dayD.riscossioni||0) + (dayD.ricariche||0) + (dayP.reduce((acc, p) => acc + (parseFloat(p.price||0)*parseFloat(p.qty||0)), 0)) - (dayD.crediti||0) - (dayD.pos||0) - (dayD.buoniCarburante||0);
+                const diff = dayReal - dayTheo;
+                totalDiff += diff; totalAgioMese += dayAgio;
+                daysData.push({ date: doc.id.split('_').pop(), diff, agio: dayAgio });
+            }
+        });
+        daysData.sort((a, b) => a.date.localeCompare(b.date));
+        setMonthlyStats({ totalDiff, totalAgio: totalAgioMese, daysData });
+    } catch (e) { console.error(e); alert("Errore report: " + e.message); } finally { setLoadingReport(false); }
+  };
+
+  const renderEntityList = (list, context) => {
+      const total = list.reduce((acc, d) => acc + (parseFloat(d.amount) || 0), 0);
+      const filtered = list.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
+      const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+      const isDebtors = context === 'debtors';
+      const ThemeColor = isDebtors ? 'rose' : 'violet'; 
+
+      return (
+        <div className="min-h-screen bg-slate-50 font-sans p-4 pb-20">
+            <div className="max-w-2xl mx-auto">
+                <div className="bg-white p-4 rounded-xl shadow-sm mb-4 sticky top-0 z-20 border-b border-slate-100"><div className="flex justify-between items-center mb-3"><button onClick={() => setCurrentView('menu')} className="p-2 bg-slate-100 rounded-lg text-slate-600"><Home size={20}/></button><h2 className="font-bold text-lg text-slate-700">{isDebtors ? 'Registro Debiti' : 'Registro Investitori'}</h2>
+                <div className="flex gap-2">
+                    <button onClick={downloadDebtorsBackup} className="p-2 bg-slate-100 text-slate-600 rounded-lg" title="Backup JSON"><Save size={20}/></button>
+                    <button onClick={() => openAddEntityModal(context)} className={`p-2 bg-${ThemeColor}-100 text-${ThemeColor}-700 rounded-lg`}><Plus size={20}/></button>
+                </div>
+                </div><div className="relative"><Search className="absolute left-3 top-2.5 text-slate-400" size={18}/><input type="text" placeholder="Cerca..." className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-slate-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/></div></div>
+                <div className={`bg-gradient-to-br from-${ThemeColor}-500 to-${ThemeColor}-600 text-white p-6 rounded-2xl shadow-lg mb-6 text-center`}><p className={`${ThemeColor}-100 text-xs font-bold uppercase tracking-wider mb-1`}>Totale Complessivo</p><h1 className="text-4xl font-extrabold">{formatEUR(total)}</h1></div>
+                <div className="space-y-3">
+                    {sorted.map(item => (
+                        <div key={item.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col gap-2">
+                            <div className="flex justify-between items-start cursor-pointer" onClick={() => { setSelectedEntity(item); setShowHistoryModal(true); }}>
+                                <div><h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">{item.name} <ChevronRight size={16} className="text-slate-300"/></h3><p className="text-xs text-slate-400 flex items-center gap-1"><Clock size={10}/> Ultima mod: {new Date(item.lastUpdated || item.date).toLocaleDateString('it-IT')}</p></div><div className="font-extrabold text-slate-700 text-xl">{formatEUR(item.amount)}</div>
+                            </div>
+                            <div className="flex gap-2 justify-end mt-2 pt-2 border-t border-slate-50"><button onClick={() => openTransactionModal(item.id, 'subtract', context)} className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"><MinusCircle size={14}/> {isDebtors ? 'Paga' : 'Preleva'}</button><button onClick={() => openTransactionModal(item.id, 'add', context)} className={`bg-${ThemeColor}-50 text-${ThemeColor}-700 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1`}><PlusCircle size={14}/> {isDebtors ? 'Aggiungi' : 'Versa'}</button><button onClick={() => removeEntity(item.id, context)} className="bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg"><Trash2 size={14}/></button></div>
+                        </div>
+                    ))}
+                    {sorted.length === 0 && <div className="text-center py-10 text-slate-400">Nessun risultato.</div>}
+                </div>
+            </div>
+            <button onClick={() => openAddEntityModal(context)} className={`fixed bottom-6 right-6 w-14 h-14 bg-${ThemeColor}-600 text-white rounded-full shadow-xl flex items-center justify-center hover:scale-105 transition-transform z-50`}><Plus size={28} /></button>
+        </div>
+      );
+  };
+
   if (!isShopIdLocked) return (<div className="min-h-screen bg-blue-900 flex items-center justify-center p-4"><div className="bg-white p-8 rounded-3xl w-full max-w-sm text-center shadow-2xl"><div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 border-4 border-yellow-400"><Fuel className="w-10 h-10 text-blue-600"/></div><h2 className="text-2xl font-black text-blue-900 mb-2">ANDRIVAL</h2><p className="text-sm text-blue-400 mb-6 font-bold uppercase tracking-wider">{appVersion}</p><input type="text" placeholder="Codice Stazione" value={shopId} onChange={(e) => setShopId(e.target.value.toUpperCase().replace(/\s/g, '-'))} className="w-full p-4 border-2 border-blue-100 rounded-xl text-center text-lg font-bold mb-4 uppercase text-blue-900 placeholder-blue-200 focus:border-yellow-400 outline-none"/><button onClick={() => {if(shopId.length>2) {localStorage.setItem('shopId', shopId); setIsShopIdLocked(true)}}} className="w-full bg-yellow-400 text-blue-900 py-4 rounded-xl font-black hover:bg-yellow-300 shadow-lg transform transition hover:-translate-y-1">ENTRA</button></div></div>);
 
   if (currentView === 'menu') return (
     <div className="min-h-screen bg-slate-100 p-4 font-sans flex flex-col items-center justify-center">
         <div className="w-full max-w-md space-y-4">
-            <div className="text-center mb-8"><div className="inline-block p-4 rounded-full bg-blue-600 border-4 border-yellow-400 shadow-xl mb-4"><Fuel className="w-12 h-12 text-yellow-400" /></div><h1 className="text-3xl font-black text-blue-900 tracking-tight">ANDRIVAL</h1><p className="text-blue-600 font-bold opacity-70">{shopId}</p></div>
+            <div className="text-center mb-8">
+                <div className="inline-block p-4 rounded-full bg-blue-600 border-4 border-yellow-400 shadow-xl mb-4"><Fuel className="w-12 h-12 text-yellow-400" /></div>
+                <h1 className="text-3xl font-black text-blue-900 tracking-tight">ANDRIVAL</h1>
+                <p className="text-blue-600 font-bold opacity-70">{shopId}</p>
+            </div>
+            
             <button onClick={() => setCurrentView('daily')} className="w-full bg-white p-6 rounded-2xl shadow-lg border-l-8 border-blue-600 flex items-center gap-4 active:scale-95 transition-transform"><div className="bg-blue-100 p-3 rounded-xl"><Calculator className="w-8 h-8 text-blue-600" /></div><div className="text-left flex-1"><h3 className="font-bold text-xl text-slate-800">Cassa</h3><p className="text-sm text-slate-400 font-medium">Chiusura giornaliera</p></div><ArrowRight className="text-blue-200" /></button>
+            
             <div className="grid grid-cols-2 gap-4">
                 <button onClick={() => setCurrentView('debtors')} className="bg-white p-5 rounded-2xl shadow-md border-l-8 border-rose-500 flex flex-col items-center gap-2 active:scale-95 transition-transform"><div className="bg-rose-100 p-3 rounded-full"><Users className="w-6 h-6 text-rose-600" /></div><h3 className="font-bold text-slate-700">Debitori</h3></button>
                 <button onClick={() => setCurrentView('investors')} className="bg-white p-5 rounded-2xl shadow-md border-l-8 border-violet-500 flex flex-col items-center gap-2 active:scale-95 transition-transform"><div className="bg-violet-100 p-3 rounded-full"><Briefcase className="w-6 h-6 text-violet-600" /></div><h3 className="font-bold text-slate-700">Investitori</h3></button>
             </div>
+
             <button onClick={() => setCurrentView('inventory')} className="w-full bg-white p-5 rounded-2xl shadow-md border-l-8 border-amber-500 flex items-center gap-4 active:scale-95 transition-transform"><div className="bg-amber-100 p-3 rounded-xl"><Package className="w-6 h-6 text-amber-600" /></div><div className="text-left flex-1"><h3 className="font-bold text-slate-700">Magazzino</h3><p className="text-sm text-slate-400">Gestione Accessori</p></div></button>
+            
             <div className="flex gap-2 mt-6"><button onClick={() => {if(confirm('Uscire?')){localStorage.removeItem('shopId'); setIsShopIdLocked(false)}}} className="flex-1 py-3 text-slate-400 text-xs font-bold hover:text-red-500 uppercase tracking-wider">Esci</button><button onClick={() => window.location.reload()} className="flex-1 py-3 text-blue-600 text-xs font-bold hover:text-blue-800 flex justify-center gap-1 uppercase tracking-wider"><RefreshCcw size={14}/> Aggiorna</button></div>
         </div>
     </div>
