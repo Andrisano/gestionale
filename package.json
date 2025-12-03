@@ -1,7 +1,7 @@
 {
-  "name": "gestionale-cassa-v7-ultimate",
+  "name": "gestionale-cassa-v6-5",
   "private": true,
-  "version": "7.0.0",
+  "version": "6.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
